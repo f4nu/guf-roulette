@@ -134,7 +134,12 @@ export default {
 		let chatId = env.CHAT_ID;
 		const testChatId = env.CHAT_ID_TEST;
 		const data = await request.json().catch(() => ({}));
-		if (data.message?.chat?.id !== chatId && data.message?.chat?.id !== testChatId) {
+
+		const isMainChat = data.message?.chat?.id == chatId;
+		const isTestChat = data.message?.chat?.id == testChatId;
+
+		if (!isMainChat && !isTestChat) {
+			console.log("Wrong chat id: " + data.message?.chat?.id);
 			return ok();
 		}
 
@@ -167,7 +172,7 @@ export default {
 			return ok();
 		}
 
-		const points = getPoints();
+		const points = getPoints(emoji, diceValue);
 		const key = `dice_${userId}`;
 		const oldPoints = parseInt(await env.DICE_LEADERBOARD.get(key) || 0);
 		let currentPoints = oldPoints + points;
