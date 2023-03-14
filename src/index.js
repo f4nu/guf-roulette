@@ -42,7 +42,7 @@ async function restrictChatMember(env, chatId, userId, untilDate, canSendMessage
 		can_manage_topics: false,
 	};
 
-	return await fetch(
+	const response = await fetch(
 		`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/restrictChatMember`,
 		{
 			method: 'POST',
@@ -57,6 +57,8 @@ async function restrictChatMember(env, chatId, userId, untilDate, canSendMessage
 			}),
 		},
 	);
+	console.log(response.status, response.body);
+	return response;
 }
 
 async function getLeaderboardText() {
