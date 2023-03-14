@@ -1,21 +1,62 @@
+function ok() {
+	return new Response(JSON.stringify({}), {
+		headers: {
+			'content-type': 'application/json;charset=UTF-8',
+		},
+	});
+}
+
 export default {
 	async fetch(request, env, ctx) {
 		const chatId = -1001976670916;
-		
 		const data = await request.json().catch(() => ({}));
-		console.log(data);
-		const userId = data.message?.from?.id;
-		const diceValue = data.message?.dice?.value;
-		const emoji = data.message?.dice?.emoji;
-		if (data.message?.chat?.id !== chatId || !diceValue) {
-			console.log("Won't parse request");
-			return new Response(JSON.stringify({}), {
-				headers: {
-					'content-type': 'application/json;charset=UTF-8',
-				},
-			});
+		if (data.message?.chat?.id !== chatId) {
+			return ok();
 		}
 
+		const diceValue = data.message?.dice?.value;
+		const emoji = data.message?.dice?.emoji;
+		const messageId = data.message?.message_id;
+
+		if (data.message?.text === '!leaderboard') {
+			const lastLeaderboardTimestamp = parseInt(await env.DICE_LEADERBOARD.get('last_leaderboard_timestamp') || 0);
+			const timestamp = Math.floor(Date.now() / 1000);
+			if (timestamp - lastLeaderboardTimestamp < 60) {
+				return ok();
+			}
+
+			await env.DICE_LEADERBOARD.put('last_leaderboard_timestamp', timestamp);
+
+			let leaderboard = await env.DICE_LEADERBOARD.list({prefix: 'dice_'});
+			leaderboard = leaderboard.keys.sort((a, b) => {
+				return parseInt(b.metadata.points) - parseInt(a.metadata.points);
+			});
+			const medals = ['🥇', '🥈', '🥉', '', ''];
+			const leaderboardText = leaderboard.map((k, i) => medals[i] + k.metadata.nickname + ": " + k.metadata.points + " punti").slice(0, 5).join("\n");
+
+			await fetch(
+				`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+				{
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json;charset=UTF-8',
+					},
+					body: JSON.stringify({
+						chat_id: chatId,
+						text: leaderboardText,
+						disable_notification: true,
+						reply_to_message_id: messageId,
+					}),
+				},
+			);
+			return ok();
+		}
+		
+		if (!diceValue) {
+			return ok();
+		}
+
+		const userId = data.message?.from?.id;
 		let points = 0;
 		// Value of the dice, 1-6 for “🎲”, “🎯” and “🎳” base emoji, 1-5 for “🏀” and “⚽” base emoji, 1-64 for “🎰” base emoji
 		if (emoji === '🎲' || emoji === '🎯' || emoji === '🎳') {
@@ -42,7 +83,7 @@ export default {
 		const key = `dice_${userId}`;
 		let oldPoints = parseInt(await env.DICE_LEADERBOARD.get(key) || 0);
 		let currentPoints = oldPoints + points;
-		env.DICE_LEADERBOARD.put(key, currentPoints, {metadata: {nickname: data.message?.from?.username}});
+		await env.DICE_LEADERBOARD.put(key, currentPoints, {metadata: {nickname: data.message?.from?.username, points: currentPoints}});
 
 		const superWon = points > 10;
 		const won = !superWon && points > 0;
@@ -70,6 +111,8 @@ export default {
 				body: JSON.stringify({
 					chat_id: chatId,
 					text: text,
+					disable_notification: true,
+					reply_to_message_id: messageId,
 				}),
 			},
 		);
@@ -108,10 +151,7 @@ export default {
 				},
 			);
 		}
-		return new Response(JSON.stringify({}), {
-			headers: {
-				'content-type': 'application/json;charset=UTF-8',
-			}
-		});
+
+		return ok();
 	},
 };
