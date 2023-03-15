@@ -5,3 +5,9 @@ compatibility_date = "2023-03-14"
 kv_namespaces = [
     { binding = "DICE_LEADERBOARD", id = "93f59ccf97e9495b8edf204ebf230d73" }
 ]
+
+[env.staging]
+name = "guf-roulette-staging"
+kv_namespaces = [
+    { binding = "DICE_LEADERBOARD", id = "dfa05b2e6e7b4baabb27d018f2cce7a9" }
+]
