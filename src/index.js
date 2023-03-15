@@ -1,3 +1,5 @@
+let ENVIRONMENT;
+
 function ok() {
 	return new Response(JSON.stringify({}), {
 		headers: {
@@ -7,6 +9,7 @@ function ok() {
 }
 
 async function sendMessage(env, chatId, text, messageId) {
+	log("Sending message: " + text + " to chat " + chatId + " in reply of " + messageId + "");
 	return await fetch(
 		`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
 		{
@@ -42,6 +45,7 @@ async function restrictChatMember(env, chatId, userId, untilDate, canSendMessage
 		can_manage_topics: false,
 	};
 
+	log("Restricting user " + userId + " in chat " + chatId + " until " + untilDate + " with permissions " + JSON.stringify(permissions) + "");
 	const response = await fetch(
 		`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/restrictChatMember`,
 		{
@@ -57,16 +61,17 @@ async function restrictChatMember(env, chatId, userId, untilDate, canSendMessage
 			}),
 		},
 	);
-	console.log(response.status, response.body);
+	console.log(response.status, await response.json());
 	return response;
 }
 
-async function getLeaderboardText() {
+async function getLeaderboardText(env) {
 	let leaderboard = await env.DICE_LEADERBOARD.list({prefix: 'dice_'});
 	leaderboard = leaderboard.keys.sort((a, b) => {
 		return parseInt(b.metadata.points) - parseInt(a.metadata.points);
 	});
 	const medals = ['🥇', '🥈', '🥉', '', ''];
+	log(leaderboard);
 	return leaderboard
 		.map((k, i) => medals[i] + k.metadata.nickname + ": " + k.metadata.points + " punti")
 		.slice(0, 5)
@@ -78,17 +83,17 @@ function passedEnoughTime(now, lastTimestamp, seconds) {
 	return now - lastTimestamp > seconds;
 }
 
-async function saveLastLeaderboardTimestamp(timestamp) {
+async function saveLastLeaderboardTimestamp(env, timestamp) {
 	return await env.DICE_LEADERBOARD.put('last_leaderboard_timestamp', timestamp);
 }
 
-async function putPointsInLeaderboard(env, key, currentPoints) {
+async function putPointsInLeaderboard(env, key, currentPoints, nickname) {
 	return await env.DICE_LEADERBOARD.put(
 		key,
 		currentPoints,
 		{
 			metadata: {
-				nickname: data.message?.from?.username,
+				nickname: nickname,
 				points: currentPoints
 			}
 		});
@@ -110,7 +115,7 @@ function getPoints(emoji, diceValue) {
 		if (diceValue === 5 || diceValue === 4 || diceValue === 3)
 			return 1;
 		else if (diceValue === 2)
-			return -2;
+			return -3;
 	} else if (emoji === '🎰') {
 		// 1: bar, 22: cherry, 43: lemon, 64: 777
 		if (diceValue === 1 || diceValue === 22 || diceValue === 43)
@@ -133,19 +138,27 @@ function getRouletteText(points, currentPoints) {
 	return `💥🔫`;
 }
 
+function log(object) {
+	if (ENVIRONMENT !== 'staging')
+		return;
+
+	console.log(object);
+}
+
 export default {
 	async fetch(request, env, ctx) {
+		ENVIRONMENT = env.ENVIRONMENT;
 		let chatId = env.CHAT_ID;
-		const testChatId = env.CHAT_ID_TEST;
 		const data = await request.json().catch(() => ({}));
 
 		const isMainChat = data.message?.chat?.id == chatId;
-		const isTestChat = data.message?.chat?.id == testChatId;
 
-		if (!isMainChat && !isTestChat) {
+		if (!isMainChat) {
 			console.log("Wrong chat id: " + data.message?.chat?.id);
 			return ok();
 		}
+
+		log(data);
 
 		chatId = data.message?.chat?.id;
 
@@ -153,21 +166,25 @@ export default {
 		const emoji = data.message?.dice?.emoji;
 		const messageId = data.message?.message_id;
 		const userId = data.message?.from?.id;
+		log({diceValue: diceValue, emoji: emoji, messageId: messageId, userId: userId});
 
 		if (data.message?.text === '!leaderboard') {
+			log("Showing leaderboard");
 			const lastLeaderboardTimestamp = parseInt(await env.DICE_LEADERBOARD.get('last_leaderboard_timestamp') || 0);
 			const timestamp = Math.floor(Date.now() / 1000);
-			if (passedEnoughTime(timestamp, lastLeaderboardTimestamp, 60))
+			log({lastLeaderboardTimestamp: lastLeaderboardTimestamp, timestamp: timestamp});
+			if (!passedEnoughTime(timestamp, lastLeaderboardTimestamp, 60))
 				return ok();
 			
-			saveLastLeaderboardTimestamp(timestamp);
-			sendMessage(env, chatId, getLeaderboardText(), messageId);
+			await saveLastLeaderboardTimestamp(env, timestamp);
+			await sendMessage(env, chatId, await getLeaderboardText(env), messageId);
 			return ok();
 		}
 
 		if (data.message?.text === '🥝') {
-			sendMessage(env, chatId, '💥🔫 Nope.', messageId);
-			restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), false);
+			log("Kiwis are not allowed here!");
+			await sendMessage(env, chatId, '💥🔫 Nope.', messageId);
+			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), false);
 			return ok();
 		}
 		
@@ -179,11 +196,11 @@ export default {
 		const key = `dice_${userId}`;
 		const oldPoints = parseInt(await env.DICE_LEADERBOARD.get(key) || 0);
 		let currentPoints = oldPoints + points;
-		putPointsInLeaderboard(env, key, currentPoints);
+		await putPointsInLeaderboard(env, key, currentPoints, data.message?.from?.username);
 
-		sendMessage(env, chatId, getRouletteText(points, currentPoints), messageId);
+		await sendMessage(env, chatId, getRouletteText(points, currentPoints), messageId);
 		if (points <= 0)
-			restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), points == 0 || points == -1);
+			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), points == 0 || points == -1);
 
 		return ok();
 	},
