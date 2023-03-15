@@ -184,7 +184,7 @@ export default {
 		if (data.message?.text === '🥝') {
 			log("Kiwis are not allowed here!");
 			await sendMessage(env, chatId, '💥🔫 Nope.', messageId);
-			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), false);
+			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 10), false);
 			return ok();
 		}
 		
