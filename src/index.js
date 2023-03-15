@@ -78,8 +78,8 @@ function passedEnoughTime(now, lastTimestamp, seconds) {
 	return now - lastTimestamp > seconds;
 }
 
-function saveLastLeaderboardTimestamp(timestamp) {
-	return env.DICE_LEADERBOARD.put('last_leaderboard_timestamp', timestamp);
+async function saveLastLeaderboardTimestamp(timestamp) {
+	return await env.DICE_LEADERBOARD.put('last_leaderboard_timestamp', timestamp);
 }
 
 async function putPointsInLeaderboard(env, key, currentPoints) {
@@ -99,16 +99,18 @@ function getPoints(emoji, diceValue) {
 	if (emoji === '🎲' || emoji === '🎯' || emoji === '🎳') {
 		if (diceValue === 6)
 			return 5;
+		else if (diceValue === 1)
+			return -2;
 	} else if (emoji === '🏀') {
 		if (diceValue === 5 || diceValue === 4)
 			return 2;
 		else if (diceValue === 3)
-			return -1;
+			return -2;
 	} else if (emoji === '⚽') {
 		if (diceValue === 5 || diceValue === 4 || diceValue === 3)
 			return 1;
 		else if (diceValue === 2)
-			return -1;
+			return -2;
 	} else if (emoji === '🎰') {
 		// 1: bar, 22: cherry, 43: lemon, 64: 777
 		if (diceValue === 1 || diceValue === 22 || diceValue === 43)
@@ -117,15 +119,15 @@ function getPoints(emoji, diceValue) {
 			return 69;
 	}
 
-	return 0;
+	return -1;
 }
 
 function getRouletteText(points, currentPoints) {
 	if (points > 10)
-		return `😱 Hai stravinto! Vola in classifica con ${currentPoints} punti!`;
+		return `😱 Hai stravinto! Vola in classifica con ${currentPoints} punti! (+${points})`;
 	else if (points > 0)
-		return `🎉 Hai vinto! Ora hai ${currentPoints} punti.`;
-	else if (points < 0)
+		return `🎉 Hai vinto! Ora hai ${currentPoints} punti. (+${points})`;
+	else if (points < -1)
 		return `💥🔫 Nope.`;
 	
 	return `💥🔫`;
@@ -159,14 +161,13 @@ export default {
 				return ok();
 			
 			saveLastLeaderboardTimestamp(timestamp);
-
-			await sendMessage(env, chatId, getLeaderboardText(), messageId);
+			sendMessage(env, chatId, getLeaderboardText(), messageId);
 			return ok();
 		}
 
 		if (data.message?.text === '🥝') {
-			await sendMessage(env, chatId, '💥🔫 Nope.', messageId);
-			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), false);
+			sendMessage(env, chatId, '💥🔫 Nope.', messageId);
+			restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), false);
 			return ok();
 		}
 		
@@ -180,9 +181,9 @@ export default {
 		let currentPoints = oldPoints + points;
 		putPointsInLeaderboard(env, key, currentPoints);
 
-		await sendMessage(env, chatId, getRouletteText(points, currentPoints), messageId);
+		sendMessage(env, chatId, getRouletteText(points, currentPoints), messageId);
 		if (points <= 0)
-			await restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), points == 0);
+			restrictChatMember(env, chatId, userId, Math.floor(Date.now() / 1000) + (60 * 5), points == 0 || points == -1);
 
 		return ok();
 	},
