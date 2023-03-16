@@ -175,13 +175,15 @@ export default {
 		log({diceValue: diceValue, emoji: emoji, messageId: messageId, userId: userId});
 
 		if (data.message?.text === '!leaderboard') {
-			log("Showing leaderboard");
+			log("Maybe showing leaderboard");
 			const lastLeaderboardTimestamp = parseInt(await env.DICE_LEADERBOARD.get('last_leaderboard_timestamp') || 0);
 			const timestamp = Math.floor(Date.now() / 1000);
-			log({lastLeaderboardTimestamp: lastLeaderboardTimestamp, timestamp: timestamp});
+			log({lastLeaderboardTimestamp: lastLeaderboardTimestamp, timestamp: timestamp, delta: timestamp - lastLeaderboardTimestamp});
 			if (!passedEnoughTime(timestamp, lastLeaderboardTimestamp, 60))
 				return ok();
 			
+			log("Showing leaderboard");
+
 			await saveLastLeaderboardTimestamp(env, timestamp);
 			await sendMessage(env, chatId, await getLeaderboardText(env), messageId);
 			return ok();
