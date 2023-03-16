@@ -162,6 +162,12 @@ export default {
 
 		chatId = data.message?.chat?.id;
 
+		const forwarded = !!data.message?.forward_from;
+		if (forwarded) {
+			log("Forwarded message");
+			return ok();
+		}
+
 		const diceValue = data.message?.dice?.value;
 		const emoji = data.message?.dice?.emoji;
 		const messageId = data.message?.message_id;
